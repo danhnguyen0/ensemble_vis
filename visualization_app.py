@@ -5,7 +5,14 @@ import plotly.express as px
 import py3Dmol
 
 st.set_page_config(layout="wide")
-
+legend_text = (
+        "Legend:\n"
+        "Color:\n"
+        "  Q1: Red \n"
+        "  Q2: Blue \n"
+        "  Q3: Green \n\n"
+        "Shape and size proportional to Dmax value\n"
+    )
 # Initialize session state if it doesn't exist
 if "uploaded_file" not in st.session_state:
     st.session_state.uploaded_file = None
@@ -49,29 +56,34 @@ def calculate_quartiles(df, column):
     Q3 = df[column].quantile(0.75)
     return Q1, Q2, Q3
 
+def check_quartile(value, df, column):
+    Q1, Q2, Q3 = calculate_quartiles(df, column)
+   
+    if value <= Q1:
+        return 'Q1'
+    elif value <= Q2:
+        return 'Q2'
+    else:
+        return 'Q3'
+
 
 def determine_shape_based_on_dmax(dmax_value, Q1_dmax, Q2_dmax, Q3_dmax):
     if dmax_value < Q1_dmax:
         return 'cartoon', 0.5
-    elif dmax_value < Q2_dmax:
-        return 'stick', 1
     elif dmax_value < Q3_dmax:
-        return 'sphere', 1.5
+        return 'cartoon', 1.5
     else:
-        return 'surface', 2
-
+        return 'cartoon', 2
 
 def determine_color_based_on_gyration(
     gyration_value, Q1_gyration, Q2_gyration, Q3_gyration
 ):
     if gyration_value <= Q1_gyration:
-        return "blue"  # Color for small gyration values
-    elif gyration_value <= Q2_gyration:
-        return "yellow"  # Color for medium gyration values
+        return "red"  # Color for small gyration values
     elif gyration_value <= Q3_gyration:
-        return "red"  # Color for large gyration values
+        return "blue"  # Color for medium gyration values
     else:
-        return "purple"  # Color for very large gyration values
+        return "green"  # Color for very large gyration values
 
 
 def load_pdb_and_show_3d(
@@ -92,19 +104,21 @@ def load_pdb_and_show_3d(
     except Exception as e:
         st.error(f"Error loading PDB file: {e}")
         return
-
+    
+    
     shape, size = determine_shape_based_on_dmax(dmax_value, Q1_dmax, Q2_dmax, Q3_dmax)
+    print(shape)
     color = determine_color_based_on_gyration(
         gyration_value, Q1_gyration, Q2_gyration, Q3_gyration
     )
-
+    print(shape, color, size)
     viewer = py3Dmol.view(width=800, height=600)
     viewer.addModel(pdb_data, "pdb")
     viewer.setStyle(
         {
             'stick': {},  # Represent atoms as sticks
-            shape : {'color' : color},  # Represent secondary structures (alpha helix, beta sheets)
-            'sphere': {'radius': 0.3, 'color': 'lightblue'},  # Show small spheres for atoms
+            'cartoon': {'thickness': size, 'color': color, 'opacity': 0.8},  # Represent secondary structures (alpha helix, beta sheets)
+            'sphere': {'radius': 0.5, 'color': 'lightblue'},  # Show small spheres for atoms
             'surface': {'color': 'yellow'},  # Display molecular surfaces
             'ligand': {'stick': {'colorscheme': 'green'}}  # Display ligands in a green stick model
         }
@@ -154,6 +168,7 @@ def compare_model_parameters(df):
 
 def show_3d_models_comparison(df):
     st.subheader("Compare Protein Structures with Dmax & Gyration Styling")
+    st.markdown(legend_text)
 
     if not {"model", "dmax", "gyration"}.issubset(df.columns):
         st.error('Dataset must contain "model", "dmax", and "gyration" columns.')
@@ -173,10 +188,15 @@ def show_3d_models_comparison(df):
                     model_data = df[df["model"] == selected_model].iloc[0]
                     dmax = model_data["dmax"]
                     gyration = model_data["gyration"]
-
+                    dmax_q = check_quartile(dmax, df, 'dmax')
+                    gyration_q = check_quartile(gyration, df, 'gyration')
+ 
                     st.markdown(f"### Model: {selected_model}")
                     st.markdown(f"- **Dmax:** {dmax}")
+                    st.markdown(f"- **Dmax Quartile:** {dmax_q}")
                     st.markdown(f"- **Gyration:** {gyration}")
+                    st.markdown(f"- **Gyration Quartile:** {gyration_q}")
+                    
 
                     pdb_file_path = f'dataset/output_e00{int(st.session_state.uploaded_file.name.split(".")[0][-1])}/model_{selected_model}.pdb'
                     if os.path.exists(pdb_file_path):
